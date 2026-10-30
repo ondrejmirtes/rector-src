@@ -14,7 +14,7 @@ use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\NodeVisitor;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
 use Rector\DeadCode\NodeAnalyzer\PropertyWriteonlyAnalyzer;
@@ -135,7 +135,7 @@ CODE_SAMPLE
         }
 
         // skip as might contain important metadata
-        return $propertyPhpDocInfo->hasByType(DoctrineAnnotationTagValueNode::class);
+        return $propertyPhpDocInfo->hasByType(DoctrineTagValueNode::class);
     }
 
     private function shouldRemoveProperty(Class_ $class, Property $property): bool

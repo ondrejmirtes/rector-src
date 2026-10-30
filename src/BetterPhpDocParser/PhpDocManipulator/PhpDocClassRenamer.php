@@ -6,13 +6,13 @@ namespace Rector\BetterPhpDocParser\PhpDocManipulator;
 
 use Nette\Utils\Strings;
 use PhpParser\Node;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\StringNode;
+use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArgument;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArray;
+use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationArguments;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocParser\ClassAnnotationMatcher;
-use Rector\BetterPhpDocParser\ValueObject\PhpDoc\DoctrineAnnotation\CurlyListNode;
-use Rector\BetterPhpDocParser\ValueObject\PhpDocAttributeKey;
 use Rector\Enum\ClassName;
 use Rector\Renaming\Collector\RenamedNameCollector;
 
@@ -56,30 +56,22 @@ final class PhpDocClassRenamer
         PhpDocInfo $phpDocInfo,
         bool &$hasChanged
     ): void {
-        $assertChoiceDoctrineAnnotationTagValueNode = $phpDocInfo->findOneByAnnotationClass(
+        $assertChoiceDoctrineAnnotation = $phpDocInfo->findOneByAnnotationClass(
             'Symfony\Component\Validator\Constraints\Choice'
         );
-        if (! $assertChoiceDoctrineAnnotationTagValueNode instanceof DoctrineAnnotationTagValueNode) {
+        if (! $assertChoiceDoctrineAnnotation instanceof DoctrineAnnotation) {
             return;
         }
 
-        $callbackArrayItemNode = $assertChoiceDoctrineAnnotationTagValueNode->getValue('callback');
-        if (! $callbackArrayItemNode instanceof ArrayItemNode) {
-            return;
-        }
-
-        $callbackClass = $callbackArrayItemNode->value;
+        $callbackDoctrineArgument = DoctrineAnnotationArguments::get($assertChoiceDoctrineAnnotation, 'callback');
 
         // array is needed for callable
-        if (! $callbackClass instanceof CurlyListNode) {
+        if (! $callbackDoctrineArgument instanceof DoctrineArgument || ! $callbackDoctrineArgument->value instanceof DoctrineArray) {
             return;
         }
 
-        $callableCallbackArrayItems = $callbackClass->getValues();
-        $classNameArrayItemNode = $callableCallbackArrayItems[0];
-        $classNameStringNode = $classNameArrayItemNode->value;
-
-        if (! $classNameStringNode instanceof StringNode) {
+        $classNameStringNode = $callbackDoctrineArgument->value->items[0]->value ?? null;
+        if (! $classNameStringNode instanceof ConstExprStringNode) {
             return;
         }
 
@@ -90,9 +82,6 @@ final class PhpDocClassRenamer
 
             $this->renamedNameCollector->add($oldClass);
             $classNameStringNode->value = $newClass;
-
-            // trigger reprint
-            $classNameArrayItemNode->setAttribute(PhpDocAttributeKey::ORIG_NODE, null);
             $hasChanged = true;
             break;
         }
@@ -107,17 +96,17 @@ final class PhpDocClassRenamer
         PhpDocInfo $phpDocInfo,
         bool &$hasChanged
     ): void {
-        $doctrineAnnotationTagValueNode = $phpDocInfo->getByAnnotationClasses([
+        $doctrineAnnotation = $phpDocInfo->getByAnnotationClasses([
             'Doctrine\ORM\Mapping\OneToMany',
             'Doctrine\ORM\Mapping\ManyToMany',
             'Doctrine\ORM\Mapping\Embedded',
         ]);
 
-        if (! $doctrineAnnotationTagValueNode instanceof DoctrineAnnotationTagValueNode) {
+        if (! $doctrineAnnotation instanceof DoctrineAnnotation) {
             return;
         }
 
-        $this->processDoctrineToMany($doctrineAnnotationTagValueNode, $node, $oldToNewClasses, $hasChanged);
+        $this->processDoctrineToMany($doctrineAnnotation, $node, $oldToNewClasses, $hasChanged);
     }
 
     /**
@@ -128,23 +117,18 @@ final class PhpDocClassRenamer
         PhpDocInfo $phpDocInfo,
         bool &$hasChanged
     ): void {
-        $doctrineAnnotationTagValueNode = $phpDocInfo->findOneByAnnotationClass(ClassName::JMS_TYPE);
-        if (! $doctrineAnnotationTagValueNode instanceof DoctrineAnnotationTagValueNode) {
+        $doctrineAnnotation = $phpDocInfo->findOneByAnnotationClass(ClassName::JMS_TYPE);
+        if (! $doctrineAnnotation instanceof DoctrineAnnotation) {
             return;
         }
 
-        $classNameArrayItemNode = $doctrineAnnotationTagValueNode->getSilentValue();
+        $classNameStringNode = DoctrineAnnotationArguments::getSilent($doctrineAnnotation)?->value;
 
         // loop-invariant, resolve once instead of per configured class
-        $currentTypeArrayItemNode = $doctrineAnnotationTagValueNode->getValue('type');
-        $currentTypeStringNode = $currentTypeArrayItemNode instanceof ArrayItemNode
-            ? $currentTypeArrayItemNode->value
-            : null;
+        $currentTypeStringNode = DoctrineAnnotationArguments::get($doctrineAnnotation, 'type')?->value;
 
         foreach ($oldToNewClasses as $oldClass => $newClass) {
-            if ($classNameArrayItemNode instanceof ArrayItemNode && $classNameArrayItemNode->value instanceof StringNode) {
-                $classNameStringNode = $classNameArrayItemNode->value;
-
+            if ($classNameStringNode instanceof ConstExprStringNode) {
                 if ($classNameStringNode->value === $oldClass) {
                     $classNameStringNode->value = $newClass;
                     continue;
@@ -157,12 +141,10 @@ final class PhpDocClassRenamer
                     $newClass
                 );
 
-                $classNameArrayItemNode->setAttribute(PhpDocAttributeKey::ORIG_NODE, null);
-
                 $hasChanged = true;
             }
 
-            if ($currentTypeStringNode instanceof StringNode && $currentTypeStringNode->value === $oldClass) {
+            if ($currentTypeStringNode instanceof ConstExprStringNode && $currentTypeStringNode->value === $oldClass) {
                 $currentTypeStringNode->value = $newClass;
 
                 $hasChanged = true;
@@ -174,29 +156,26 @@ final class PhpDocClassRenamer
      * @param array<string, string> $oldToNewClasses
      */
     private function processDoctrineToMany(
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode,
+        DoctrineAnnotation $doctrineAnnotation,
         Node $node,
         array $oldToNewClasses,
         bool &$hasChanged
     ): void {
-        $classKey = $doctrineAnnotationTagValueNode->hasClassName(
+        $classKey = DoctrineAnnotationArguments::hasClassName(
+            $doctrineAnnotation,
             'Doctrine\ORM\Mapping\Embedded'
         ) ? 'class' : 'targetEntity';
 
-        $targetEntityArrayItemNode = $doctrineAnnotationTagValueNode->getValue($classKey);
-        if (! $targetEntityArrayItemNode instanceof ArrayItemNode) {
+        $targetEntityStringNode = DoctrineAnnotationArguments::get($doctrineAnnotation, $classKey)?->value;
+        if (! $targetEntityStringNode instanceof ConstExprStringNode) {
             return;
         }
-
-        $targetEntityStringNode = $targetEntityArrayItemNode->value;
-        if (! $targetEntityStringNode instanceof StringNode) {
-            return;
-        }
-
-        $targetEntityClass = $targetEntityStringNode->value;
 
         // resolve to FQN
-        $tagFullyQualifiedName = $this->classAnnotationMatcher->resolveTagFullyQualifiedName($targetEntityClass, $node);
+        $tagFullyQualifiedName = $this->classAnnotationMatcher->resolveTagFullyQualifiedName(
+            $targetEntityStringNode->value,
+            $node
+        );
 
         foreach ($oldToNewClasses as $oldClass => $newClass) {
             if ($tagFullyQualifiedName !== $oldClass) {
@@ -205,7 +184,6 @@ final class PhpDocClassRenamer
 
             $this->renamedNameCollector->add($oldClass);
             $targetEntityStringNode->value = $newClass;
-            $targetEntityArrayItemNode->setAttribute(PhpDocAttributeKey::ORIG_NODE, null);
 
             $hasChanged = true;
         }

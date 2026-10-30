@@ -26,11 +26,9 @@ final readonly class AttrGroupsFactory
         $attributeGroups = [];
 
         foreach ($doctrineTagAndAnnotationToAttributes as $doctrineTagAndAnnotationToAttribute) {
-            $doctrineAnnotationTagValueNode = $doctrineTagAndAnnotationToAttribute->getDoctrineAnnotationTagValueNode();
-
             // add attributes
             $attributeGroups[] = $this->phpAttributeGroupFactory->create(
-                $doctrineAnnotationTagValueNode,
+                $doctrineTagAndAnnotationToAttribute->getDoctrineAnnotation(),
                 $doctrineTagAndAnnotationToAttribute->getAnnotationToAttribute(),
                 $uses
             );

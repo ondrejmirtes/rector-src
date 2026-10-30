@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Rector\Php80\Rector\Class_;
 
 use Nette\Utils\Strings;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
 use Rector\Php80\ValueObject\AnnotationToAttribute;
 use Rector\Php80\ValueObject\AttributeValueAndDocComment;
 use Rector\Util\NewLineSplitter;
@@ -28,15 +28,14 @@ final class AttributeValueResolver
 
         $docValue = (string) $phpDocTagNode->value;
 
-        if ($phpDocTagNode->value instanceof DoctrineAnnotationTagValueNode) {
-            $originalContent = (string) $phpDocTagNode->value->getOriginalContent();
-
-            if ($docValue === '') {
-                $docValue = $originalContent;
+        if ($phpDocTagNode->value instanceof DoctrineTagValueNode) {
+            $doctrineTagValueNode = $phpDocTagNode->value;
+            if ($doctrineTagValueNode->annotation->arguments === []) {
+                $docValue = $doctrineTagValueNode->description;
             } else {
-                $attributeComment = ltrim($originalContent, $docValue);
-                if ($attributeComment !== '') {
-                    $docValue .= "\n" . $attributeComment;
+                $docValue = '(' . implode(', ', $doctrineTagValueNode->annotation->arguments) . ')';
+                if ($doctrineTagValueNode->description !== '') {
+                    $docValue .= "\n" . $doctrineTagValueNode->description;
                 }
             }
         }

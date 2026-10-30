@@ -6,8 +6,9 @@ namespace Rector\BetterPhpDocParser\PhpDocManipulator;
 
 use PHPStan\PhpDocParser\Ast\Node;
 use PHPStan\PhpDocParser\Ast\NodeTraverser;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationArguments;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\PhpDocParser\PhpDocParser\PhpDocNodeVisitor\CallablePhpDocNodeVisitor;
 
@@ -31,7 +32,8 @@ final class PhpDocTagRemover
                 $hasChanged = true;
             }
 
-            if ($phpDocChildNode->value instanceof DoctrineAnnotationTagValueNode && $phpDocChildNode->value->hasClassName(
+            if ($phpDocChildNode->value instanceof DoctrineTagValueNode && DoctrineAnnotationArguments::hasClassName(
+                $phpDocChildNode->value->annotation,
                 $name
             )) {
                 unset($phpDocNode->children[$key]);
@@ -51,7 +53,7 @@ final class PhpDocTagRemover
             $desiredNode,
             &$hasChanged
         ): ?int {
-            if ($node instanceof PhpDocTagNode && $node->value === $desiredNode) {
+            if ($node instanceof PhpDocTagNode && ($node->value === $desiredNode || ($node->value instanceof DoctrineTagValueNode && $node->value->annotation === $desiredNode))) {
                 $hasChanged = true;
                 return NodeTraverser::REMOVE_NODE;
             }

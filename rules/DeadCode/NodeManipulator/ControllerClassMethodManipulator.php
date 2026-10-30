@@ -7,8 +7,8 @@ namespace Rector\DeadCode\NodeManipulator;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\GenericTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\SpacelessPhpDocTagNode;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
 use Rector\NodeNameResolver\NodeNameResolver;
 
@@ -31,7 +31,7 @@ final readonly class ControllerClassMethodManipulator
         }
 
         $phpDocInfo = $this->phpDocInfoFactory->createFromNodeOrEmpty($classMethod);
-        return $phpDocInfo->hasByTypes([GenericTagValueNode::class, SpacelessPhpDocTagNode::class]);
+        return $phpDocInfo->hasByTypes([GenericTagValueNode::class, DoctrineTagValueNode::class]);
     }
 
     private function hasParentClassController(Class_ $class): bool

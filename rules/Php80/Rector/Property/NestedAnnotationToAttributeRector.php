@@ -11,8 +11,9 @@ use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Use_;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
 use Rector\BetterPhpDocParser\PhpDocManipulator\PhpDocTagRemover;
@@ -163,12 +164,12 @@ CODE_SAMPLE
                 continue;
             }
 
-            if (! $phpDocChildNode->value instanceof DoctrineAnnotationTagValueNode) {
+            if (! $phpDocChildNode->value instanceof DoctrineTagValueNode) {
                 continue;
             }
 
             $doctrineTagValueNode = $phpDocChildNode->value;
-            $nestedAnnotationToAttribute = $this->matchAnnotationToAttribute($doctrineTagValueNode);
+            $nestedAnnotationToAttribute = $this->matchAnnotationToAttribute($doctrineTagValueNode->annotation);
             if (! $nestedAnnotationToAttribute instanceof NestedAnnotationToAttribute) {
                 continue;
             }
@@ -176,7 +177,7 @@ CODE_SAMPLE
             $this->phpDocTagRemover->removeTagValueFromNode($phpDocInfo, $doctrineTagValueNode);
 
             $nestedDoctrineTagAndAnnotationToAttributes[] = new NestedDoctrineTagAndAnnotationToAttribute(
-                $doctrineTagValueNode,
+                $doctrineTagValueNode->annotation,
                 $nestedAnnotationToAttribute,
             );
         }
@@ -185,11 +186,9 @@ CODE_SAMPLE
     }
 
     private function matchAnnotationToAttribute(
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode
+        DoctrineAnnotation $doctrineAnnotation
     ): NestedAnnotationToAttribute|null {
-        $doctrineResolvedClass = $doctrineAnnotationTagValueNode->identifierTypeNode->getAttribute(
-            PhpDocAttributeKey::RESOLVED_CLASS
-        );
+        $doctrineResolvedClass = $doctrineAnnotation->getAttribute(PhpDocAttributeKey::RESOLVED_CLASS);
 
         foreach ($this->nestedAnnotationsToAttributes as $nestedAnnotationToAttribute) {
             foreach ($nestedAnnotationToAttribute->getAnnotationPropertiesToAttributeClasses() as $annotationClass) {

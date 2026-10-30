@@ -8,17 +8,10 @@ use Rector\PhpDocParser\PhpDocParser\ValueObject\PhpDocAttributeKey as NativePhp
 
 final class PhpDocAttributeKey
 {
-    public const string START_AND_END = 'start_and_end';
-
     /**
      * Fully qualified name of identifier type class
      */
     public const string RESOLVED_CLASS = 'resolved_class';
-
-    /**
-     * Fully qualified name of class referenced in an array item key, e.g. SomeEnum::TOTP
-     */
-    public const string RESOLVED_KEY_CLASS = 'resolved_key_class';
 
     public const string PARENT = NativePhpDocAttributeKey::PARENT;
 

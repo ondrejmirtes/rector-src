@@ -9,7 +9,9 @@ use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Use_;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
+use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationArguments;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
 use Rector\BetterPhpDocParser\PhpDocManipulator\PhpDocTagRemover;
@@ -131,27 +133,27 @@ CODE_SAMPLE
                 continue;
             }
 
-            if (! $phpDocChildNode->value instanceof DoctrineAnnotationTagValueNode) {
+            if (! $phpDocChildNode->value instanceof DoctrineTagValueNode) {
                 continue;
             }
 
             $doctrineTagValueNode = $phpDocChildNode->value;
-            $annotationToAttribute = $this->matchAnnotationToAttribute($doctrineTagValueNode);
+            $annotationToAttribute = $this->matchAnnotationToAttribute($doctrineTagValueNode->annotation);
             if (! $annotationToAttribute instanceof AnnotationToAttribute) {
                 continue;
             }
 
             // Fix the missing leading slash in most of the wild use cases
-            if (str_starts_with($doctrineTagValueNode->identifierTypeNode->name, '@TYPO3\CMS')) {
-                $doctrineTagValueNode->identifierTypeNode->name = str_replace(
+            if (str_starts_with($doctrineTagValueNode->annotation->name, '@TYPO3\CMS')) {
+                $doctrineTagValueNode->annotation->name = str_replace(
                     '@TYPO3\CMS',
                     '@\\TYPO3\CMS',
-                    $doctrineTagValueNode->identifierTypeNode->name
+                    $doctrineTagValueNode->annotation->name
                 );
             }
 
             $doctrineTagAndAnnotationToAttributes[] = new DoctrineTagAndAnnotationToAttribute(
-                $doctrineTagValueNode,
+                $doctrineTagValueNode->annotation,
                 $annotationToAttribute
             );
             $doctrineTagValueNodes[] = $doctrineTagValueNode;
@@ -170,10 +172,10 @@ CODE_SAMPLE
     }
 
     private function matchAnnotationToAttribute(
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode
+        DoctrineAnnotation $doctrineAnnotation
     ): ?AnnotationToAttribute {
         foreach ($this->annotationsToAttributes as $annotationToAttribute) {
-            if (! $doctrineAnnotationTagValueNode->hasClassName($annotationToAttribute->getTag())) {
+            if (! DoctrineAnnotationArguments::hasClassName($doctrineAnnotation, $annotationToAttribute->getTag())) {
                 continue;
             }
 

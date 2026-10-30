@@ -5,41 +5,30 @@ declare(strict_types=1);
 namespace Rector\BetterPhpDocParser\NodeDecorator;
 
 use PhpParser\Node;
-use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprFalseNode;
-use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
-use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
-use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNullNode;
-use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
-use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprTrueNode;
+use PHPStan\PhpDocParser\Ast\Attribute;
+use PHPStan\PhpDocParser\Ast\Node as PhpDocParserNode;
+use PHPStan\PhpDocParser\Ast\NodeTraverser;
 use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
-use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArgument;
-use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArray;
 use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\GenericTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\InvalidTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
-use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use PHPStan\PhpDocParser\Lexer\Lexer;
 use PHPStan\Type\ObjectType;
-use Rector\BetterPhpDocParser\Attributes\AttributeMirrorer;
 use Rector\BetterPhpDocParser\Contract\PhpDocParser\PhpDocNodeDecoratorInterface;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\SpacelessPhpDocTagNode;
-use Rector\BetterPhpDocParser\PhpDoc\StringNode;
 use Rector\BetterPhpDocParser\PhpDocInfo\TokenIteratorFactory;
 use Rector\BetterPhpDocParser\PhpDocParser\ClassAnnotationMatcher;
-use Rector\BetterPhpDocParser\ValueObject\DoctrineAnnotation\SilentKeyMap;
-use Rector\BetterPhpDocParser\ValueObject\PhpDoc\DoctrineAnnotation\CurlyListNode;
 use Rector\BetterPhpDocParser\ValueObject\PhpDocAttributeKey;
 use Rector\NodeTypeResolver\Node\AttributeKey;
+use Rector\PhpDocParser\PhpDocParser\PhpDocNodeVisitor\CallablePhpDocNodeVisitor;
 use Rector\StaticTypeMapper\ValueObject\Type\AliasedObjectType;
 use Rector\StaticTypeMapper\ValueObject\Type\ShortenedObjectType;
 use Rector\TypeDeclaration\PHPStan\ObjectTypeSpecifier;
 
 /**
- * Converts the Doctrine annotations that phpdoc-parser parsed to Rector Doctrine annotation nodes
+ * Resolves the classes of Doctrine annotations.
+ * A tag without arguments, e.g. @ORM\Id, becomes a Doctrine annotation with no arguments.
  */
 final readonly class DoctrineAnnotationDecorator implements PhpDocNodeDecoratorInterface
 {
@@ -52,7 +41,6 @@ final readonly class DoctrineAnnotationDecorator implements PhpDocNodeDecoratorI
     public function __construct(
         private ClassAnnotationMatcher $classAnnotationMatcher,
         private TokenIteratorFactory $tokenIteratorFactory,
-        private AttributeMirrorer $attributeMirrorer,
         private ObjectTypeSpecifier $objectTypeSpecifier
     ) {
     }
@@ -61,7 +49,7 @@ final readonly class DoctrineAnnotationDecorator implements PhpDocNodeDecoratorI
     {
         $incompleteAnnotationContent = null;
 
-        foreach ($phpDocNode->children as $key => $phpDocChildNode) {
+        foreach ($phpDocNode->children as $phpDocChildNode) {
             // the next children are the rest of an incomplete annotation, e.g. its nested annotations; keep them
             if ($incompleteAnnotationContent !== null) {
                 $incompleteAnnotationContent .= "\n" . $phpDocChildNode;
@@ -91,17 +79,9 @@ final readonly class DoctrineAnnotationDecorator implements PhpDocNodeDecoratorI
                     continue;
                 }
 
-                $doctrineTagValueNode = $phpDocChildNode->value;
-                $originalContent = '(' . implode(', ', $doctrineTagValueNode->annotation->arguments) . ')'
-                    . $doctrineTagValueNode->description;
-
-                $values = $this->createArrayItemNodes($doctrineTagValueNode->annotation->arguments, $phpNode);
-                $phpDocNode->children[$key] = $this->createSpacelessPhpDocTagNode(
-                    $phpDocChildNode,
-                    $fullyQualifiedAnnotationClass,
-                    $originalContent,
-                    $values
-                );
+                $doctrineAnnotation = $phpDocChildNode->value->annotation;
+                $doctrineAnnotation->setAttribute(PhpDocAttributeKey::RESOLVED_CLASS, $fullyQualifiedAnnotationClass);
+                $this->decorateNestedAnnotations($doctrineAnnotation, $phpNode);
 
                 continue;
             }
@@ -125,43 +105,55 @@ final readonly class DoctrineAnnotationDecorator implements PhpDocNodeDecoratorI
                 continue;
             }
 
-            $phpDocNode->children[$key] = $this->createSpacelessPhpDocTagNode(
+            $phpDocChildNode->value = $this->createDoctrineTagValueNode(
                 $phpDocChildNode,
-                $fullyQualifiedAnnotationClass,
-                $phpDocChildNode->value->value,
-                []
+                $phpDocChildNode->value,
+                $fullyQualifiedAnnotationClass
             );
         }
     }
 
     /**
-     * @param ArrayItemNode[] $values
+     * The annotation has no tokens, so an unchanged annotation is printed without "()"
      */
-    private function createSpacelessPhpDocTagNode(
+    private function createDoctrineTagValueNode(
         PhpDocTagNode $phpDocTagNode,
-        string $fullyQualifiedAnnotationClass,
-        string $originalContent,
-        array $values
-    ): SpacelessPhpDocTagNode {
-        $identifierTypeNode = new IdentifierTypeNode($phpDocTagNode->name);
-        $identifierTypeNode->setAttribute(PhpDocAttributeKey::RESOLVED_CLASS, $fullyQualifiedAnnotationClass);
+        GenericTagValueNode $genericTagValueNode,
+        string $fullyQualifiedAnnotationClass
+    ): DoctrineTagValueNode {
+        $startIndex = $genericTagValueNode->getAttribute(Attribute::START_INDEX);
 
-        $doctrineAnnotationTagValueNode = new DoctrineAnnotationTagValueNode(
-            $identifierTypeNode,
-            $originalContent,
-            $values,
-            SilentKeyMap::CLASS_NAMES_TO_SILENT_KEYS[$fullyQualifiedAnnotationClass] ?? null,
-        );
+        $doctrineAnnotation = new DoctrineAnnotation($phpDocTagNode->name, []);
+        $doctrineAnnotation->setAttribute(PhpDocAttributeKey::RESOLVED_CLASS, $fullyQualifiedAnnotationClass);
+        $doctrineAnnotation->setAttribute(Attribute::START_INDEX, $startIndex);
+        $doctrineAnnotation->setAttribute(Attribute::END_INDEX, $startIndex - 1);
 
-        $doctrineAnnotationTagValueNode->setAttribute(
-            PhpDocAttributeKey::START_AND_END,
-            $phpDocTagNode->getAttribute(PhpDocAttributeKey::START_AND_END)
-        );
+        $doctrineTagValueNode = new DoctrineTagValueNode($doctrineAnnotation, $genericTagValueNode->value);
+        foreach ([Attribute::START_LINE, Attribute::END_LINE, Attribute::START_INDEX, Attribute::END_INDEX] as $attributeName) {
+            $doctrineTagValueNode->setAttribute($attributeName, $genericTagValueNode->getAttribute($attributeName));
+        }
 
-        $spacelessPhpDocTagNode = new SpacelessPhpDocTagNode($phpDocTagNode->name, $doctrineAnnotationTagValueNode);
-        $this->attributeMirrorer->mirror($phpDocTagNode, $spacelessPhpDocTagNode);
+        return $doctrineTagValueNode;
+    }
 
-        return $spacelessPhpDocTagNode;
+    private function decorateNestedAnnotations(DoctrineAnnotation $doctrineAnnotation, Node $phpNode): void
+    {
+        $nodeTraverser = new NodeTraverser([new CallablePhpDocNodeVisitor(function (PhpDocParserNode $node) use (
+            $phpNode
+        ): ?PhpDocParserNode {
+            if (! $node instanceof DoctrineAnnotation) {
+                return null;
+            }
+
+            $node->setAttribute(
+                PhpDocAttributeKey::RESOLVED_CLASS,
+                $this->classAnnotationMatcher->resolveTagFullyQualifiedName($node->name, $phpNode)
+            );
+
+            return $node;
+        })]);
+
+        $nodeTraverser->traverse($doctrineAnnotation->arguments);
     }
 
     private function resolveDoctrineTagClass(string $tagName, Node $phpNode): ?string
@@ -181,83 +173,6 @@ final readonly class DoctrineAnnotationDecorator implements PhpDocNodeDecoratorI
         }
 
         return null;
-    }
-
-    /**
-     * @param DoctrineArgument[] $doctrineArguments
-     * @return ArrayItemNode[]
-     */
-    private function createArrayItemNodes(array $doctrineArguments, Node $phpNode): array
-    {
-        $arrayItemNodes = [];
-        foreach ($doctrineArguments as $doctrineArgument) {
-            $arrayItemNodes[] = new ArrayItemNode(
-                $this->createValue($doctrineArgument->value, $phpNode),
-                $doctrineArgument->key?->name
-            );
-        }
-
-        return $arrayItemNodes;
-    }
-
-    private function createValue(mixed $value, Node $phpNode): mixed
-    {
-        if ($value instanceof DoctrineAnnotation) {
-            $identifierTypeNode = new IdentifierTypeNode($value->name);
-            $identifierTypeNode->setAttribute(
-                PhpDocAttributeKey::RESOLVED_CLASS,
-                $this->classAnnotationMatcher->resolveTagFullyQualifiedName($value->name, $phpNode)
-            );
-
-            return new DoctrineAnnotationTagValueNode(
-                $identifierTypeNode,
-                '(' . implode(', ', $value->arguments) . ')',
-                $this->createArrayItemNodes($value->arguments, $phpNode)
-            );
-        }
-
-        if ($value instanceof DoctrineArray) {
-            $arrayItemNodes = [];
-            foreach ($value->items as $doctrineArrayItem) {
-                $key = $doctrineArrayItem->key instanceof ConstExprIntegerNode
-                    ? (int) $doctrineArrayItem->key->value
-                    : $this->createValue($doctrineArrayItem->key, $phpNode);
-
-                $arrayItemNodes[] = new ArrayItemNode($this->createValue($doctrineArrayItem->value, $phpNode), $key);
-            }
-
-            return new CurlyListNode($arrayItemNodes);
-        }
-
-        if ($value instanceof IdentifierTypeNode) {
-            return match (strtolower($value->name)) {
-                'true' => new ConstExprTrueNode(),
-                'false' => new ConstExprFalseNode(),
-                'null' => null,
-                default => $value->name,
-            };
-        }
-
-        if ($value instanceof ConstExprStringNode) {
-            return $value->quoteType === ConstExprStringNode::DOUBLE_QUOTED
-                ? new StringNode($value->value)
-                : $value->value;
-        }
-
-        if ($value instanceof ConstExprNullNode) {
-            return null;
-        }
-
-        if ($value instanceof ConstExprIntegerNode || $value instanceof ConstExprTrueNode || $value instanceof ConstExprFalseNode) {
-            return $value;
-        }
-
-        // class constant fetch, float
-        if ($value instanceof ConstExprNode) {
-            return (string) $value;
-        }
-
-        return $value;
     }
 
     /**

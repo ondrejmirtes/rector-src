@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Rector\Tests\PhpAttribute\Printer;
 
 use PhpParser\Node\Arg;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\StringNode;
+use PHPStan\PhpDocParser\Ast\ConstExpr\DoctrineConstExprStringNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArgument;
+use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use Rector\PhpAttribute\NodeFactory\PhpAttributeGroupFactory;
 use Rector\Testing\PHPUnit\AbstractLazyTestCase;
 
@@ -37,8 +38,8 @@ final class PhpAttributeGroupFactoryTest extends AbstractLazyTestCase
     public function testCreateArgsFromItems(): void
     {
         $args = $this->phpAttributeGroupFactory->createArgsFromItems([
-            new ArrayItemNode(new StringNode('/path'), 'path'),
-            new ArrayItemNode(new StringNode('action'), 'name'),
+            new DoctrineArgument(new IdentifierTypeNode('path'), new DoctrineConstExprStringNode('/path')),
+            new DoctrineArgument(new IdentifierTypeNode('name'), new DoctrineConstExprStringNode('action')),
         ]);
 
         $this->assertCount(2, $args);

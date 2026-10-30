@@ -18,12 +18,14 @@ use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Use_;
 use PHPStan\PhpDocParser\Ast\Node as DocNode;
 use PHPStan\PhpDocParser\Ast\NodeTraverser;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\GenericTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocChildNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTextNode;
 use PHPStan\Reflection\ReflectionProvider;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationArguments;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
 use Rector\BetterPhpDocParser\PhpDocManipulator\PhpDocTagRemover;
@@ -234,7 +236,7 @@ CODE_SAMPLE
                 return null;
             }
 
-            if (! $docNode->value instanceof GenericTagValueNode && ! $docNode->value instanceof DoctrineAnnotationTagValueNode) {
+            if (! $docNode->value instanceof GenericTagValueNode && ! $docNode->value instanceof DoctrineTagValueNode) {
                 return null;
             }
 
@@ -292,13 +294,13 @@ CODE_SAMPLE
                 continue;
             }
 
-            if (! $phpDocChildNode->value instanceof DoctrineAnnotationTagValueNode) {
+            if (! $phpDocChildNode->value instanceof DoctrineTagValueNode) {
                 continue;
             }
 
             $doctrineTagValueNode = $phpDocChildNode->value;
 
-            $annotationToAttribute = $this->matchAnnotationToAttribute($doctrineTagValueNode);
+            $annotationToAttribute = $this->matchAnnotationToAttribute($doctrineTagValueNode->annotation);
             if (! $annotationToAttribute instanceof AnnotationToAttribute) {
                 continue;
             }
@@ -313,7 +315,7 @@ CODE_SAMPLE
             }
 
             $doctrineTagAndAnnotationToAttributes[] = new DoctrineTagAndAnnotationToAttribute(
-                $doctrineTagValueNode,
+                $doctrineTagValueNode->annotation,
                 $annotationToAttribute,
             );
 
@@ -330,8 +332,7 @@ CODE_SAMPLE
 
         foreach ($doctrineTagValueNodes as $doctrineTagValueNode) {
             // keep a doc comment that followed the annotation on the next line(s)
-            $trailingComment = $this->resolveTrailingComment((string) $doctrineTagValueNode->getOriginalContent());
-            if ($trailingComment === null) {
+            if (! StringUtils::isMatch($doctrineTagValueNode->description, self::LETTER_REGEX)) {
                 $this->phpDocTagRemover->removeTagValueFromNode($phpDocInfo, $doctrineTagValueNode);
                 continue;
             }
@@ -345,76 +346,18 @@ CODE_SAMPLE
                     continue;
                 }
 
-                $phpDocNode->children[$key] = new PhpDocTextNode($trailingComment);
+                $phpDocNode->children[$key] = new PhpDocTextNode(trim($doctrineTagValueNode->description));
             }
         }
 
         return $attributeGroups;
     }
 
-    /**
-     * A doctrine annotation swallows the doc comment placed on the line(s) below it into its original content.
-     * Split it back out, so it is not removed together with the converted annotation.
-     */
-    private function resolveTrailingComment(string $originalContent): ?string
-    {
-        if (! str_starts_with($originalContent, '(')) {
-            return null;
-        }
-
-        $depth = 0;
-        $inString = false;
-        $stringChar = '';
-        $length = strlen($originalContent);
-
-        for ($i = 0; $i < $length; ++$i) {
-            $char = $originalContent[$i];
-
-            if ($inString) {
-                if ($char === '\\') {
-                    // skip escaped char
-                    ++$i;
-                } elseif ($char === $stringChar) {
-                    $inString = false;
-                }
-
-                continue;
-            }
-
-            if ($char === '"' || $char === "'") {
-                $inString = true;
-                $stringChar = $char;
-                continue;
-            }
-
-            if ($char === '(') {
-                ++$depth;
-                continue;
-            }
-
-            if ($char === ')') {
-                --$depth;
-                if ($depth === 0) {
-                    $trailingComment = trim(substr($originalContent, $i + 1));
-
-                    // keep only a real doc comment, not leftover annotation syntax (e.g. a stray ")")
-                    if (! StringUtils::isMatch($trailingComment, self::LETTER_REGEX)) {
-                        return null;
-                    }
-
-                    return $trailingComment;
-                }
-            }
-        }
-
-        return null;
-    }
-
     private function matchAnnotationToAttribute(
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode
+        DoctrineAnnotation $doctrineAnnotation
     ): AnnotationToAttribute|null {
         foreach ($this->annotationsToAttributes as $annotationToAttribute) {
-            if (! $doctrineAnnotationTagValueNode->hasClassName($annotationToAttribute->getTag())) {
+            if (! DoctrineAnnotationArguments::hasClassName($doctrineAnnotation, $annotationToAttribute->getTag())) {
                 continue;
             }
 

@@ -195,9 +195,6 @@ final class UnusedImportRemovingPostRector extends AbstractPostRector
 
             $inlineGenericUsesTagClassNames = $phpDocInfo->getInlineGenericUsesTagClassNames();
             $names = [...$names, ...$inlineGenericUsesTagClassNames];
-
-            $arrayItemTagClassNames = $phpDocInfo->getArrayItemNodeClassNames();
-            $names = [...$names, ...$arrayItemTagClassNames];
         }
 
         return $names;

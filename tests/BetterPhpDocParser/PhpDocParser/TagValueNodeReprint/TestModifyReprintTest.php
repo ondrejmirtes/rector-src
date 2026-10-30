@@ -8,13 +8,16 @@ use Nette\Utils\FileSystem;
 use PhpParser\Node;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\StringNode;
+use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
+use PHPStan\PhpDocParser\Ast\ConstExpr\DoctrineConstExprStringNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArgument;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArray;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArrayItem;
+use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
 use Rector\BetterPhpDocParser\Printer\PhpDocInfoPrinter;
-use Rector\BetterPhpDocParser\ValueObject\PhpDoc\DoctrineAnnotation\CurlyListNode;
 use Rector\Exception\ShouldNotHappenException;
 use Rector\PhpParser\Node\BetterNodeFinder;
 use Rector\Testing\Fixture\FixtureSplitter;
@@ -50,17 +53,14 @@ final class TestModifyReprintTest extends AbstractLazyTestCase
 
         $phpDocInfo = $this->parseFileAndGetFirstNodeOfType($inputContent, ClassMethod::class);
 
-        $doctrineAnnotationTagValueNode = $phpDocInfo->findOneByAnnotationClass(
-            'Symfony\Component\Routing\Annotation\Route'
-        );
-        $this->assertInstanceOf(DoctrineAnnotationTagValueNode::class, $doctrineAnnotationTagValueNode);
+        $doctrineAnnotation = $phpDocInfo->findOneByAnnotationClass('Symfony\Component\Routing\Annotation\Route');
+        $this->assertInstanceOf(DoctrineAnnotation::class, $doctrineAnnotation);
 
         // this will extended tokens of first node
-        $methodsCurlyListNode = new CurlyListNode([
-            new ArrayItemNode(new StringNode('GET')),
-            new ArrayItemNode(new StringNode('HEAD')),
-        ]);
-        $doctrineAnnotationTagValueNode->values[] = new ArrayItemNode($methodsCurlyListNode, 'methods');
+        $doctrineAnnotation->arguments[] = new DoctrineArgument(new IdentifierTypeNode('methods'), new DoctrineArray([
+            new DoctrineArrayItem(null, new DoctrineConstExprStringNode('GET')),
+            new DoctrineArrayItem(null, new DoctrineConstExprStringNode('HEAD')),
+        ]));
 
         $expectedDocContent = trim($expectedContent);
 
@@ -84,13 +84,15 @@ final class SomeEntity
 PHP
             , Class_::class);
 
-        $doctrineAnnotationTagValueNode = $phpDocInfo->findOneByAnnotationClass('Doctrine\ORM\Mapping\DiscriminatorMap');
-        $this->assertInstanceOf(DoctrineAnnotationTagValueNode::class, $doctrineAnnotationTagValueNode);
+        $doctrineAnnotation = $phpDocInfo->findOneByAnnotationClass('Doctrine\ORM\Mapping\DiscriminatorMap');
+        $this->assertInstanceOf(DoctrineAnnotation::class, $doctrineAnnotation);
 
-        $curlyListNode = $doctrineAnnotationTagValueNode->values[0]->value;
-        $this->assertInstanceOf(CurlyListNode::class, $curlyListNode);
-        $curlyListNode->values[] = new ArrayItemNode(new StringNode('Third'), 7);
-        $doctrineAnnotationTagValueNode->markAsChanged();
+        $doctrineArray = $doctrineAnnotation->arguments[0]->value;
+        $this->assertInstanceOf(DoctrineArray::class, $doctrineArray);
+        $doctrineArray->items[] = new DoctrineArrayItem(
+            new ConstExprIntegerNode('7'),
+            new DoctrineConstExprStringNode('Third')
+        );
 
         $this->assertSame(
             "/**\n * @ORM\DiscriminatorMap({1=\"First\", 5=\"Second\", 7=\"Third\"})\n */",

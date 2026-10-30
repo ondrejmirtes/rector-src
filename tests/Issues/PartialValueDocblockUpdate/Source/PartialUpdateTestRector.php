@@ -6,10 +6,12 @@ namespace Rector\Tests\Issues\PartialValueDocblockUpdate\Source;
 
 use PhpParser\Node;
 use PhpParser\Node\Stmt\ClassMethod;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArgument;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArray;
+use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationArguments;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
-use Rector\BetterPhpDocParser\ValueObject\PhpDoc\DoctrineAnnotation\CurlyListNode;
 use Rector\Comments\NodeDocBlock\DocBlockUpdater;
 use Rector\Rector\AbstractRector;
 use Rector\RuleDoc\RuleDefinition;
@@ -37,17 +39,17 @@ final class PartialUpdateTestRector extends AbstractRector
     public function refactor(Node $node)
     {
         $phpDocInfo = $this->phpDocInfoFactory->createFromNodeOrEmpty($node);
-        $routeDoctrineAnnotationTagValueNode = $phpDocInfo->getByAnnotationClass('Symfony\Component\Routing\Annotation\Route');
+        $routeDoctrineAnnotation = $phpDocInfo->getByAnnotationClass('Symfony\Component\Routing\Annotation\Route');
 
-        if (! $routeDoctrineAnnotationTagValueNode instanceof DoctrineAnnotationTagValueNode) {
+        if (! $routeDoctrineAnnotation instanceof DoctrineAnnotation) {
             return null;
         }
 
-        $defaultsArrayItem = $routeDoctrineAnnotationTagValueNode->getValue('defaults');
-        if (! $defaultsArrayItem instanceof ArrayItemNode) {
-            $routeDoctrineAnnotationTagValueNode->values[] = new ArrayItemNode(
-                new CurlyListNode(),
-                'defaults',
+        $defaultsDoctrineArgument = DoctrineAnnotationArguments::get($routeDoctrineAnnotation, 'defaults');
+        if (! $defaultsDoctrineArgument instanceof DoctrineArgument) {
+            $routeDoctrineAnnotation->arguments[] = new DoctrineArgument(
+                new IdentifierTypeNode('defaults'),
+                new DoctrineArray([]),
             );
 
             $this->docBlockUpdater->updateRefactoredNodeWithPhpDocInfo($node);

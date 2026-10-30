@@ -8,14 +8,15 @@ use Nette\Utils\Strings;
 use PhpParser\Node as PhpParserNode;
 use PHPStan\PhpDocParser\Ast\AbstractNodeVisitor;
 use PHPStan\PhpDocParser\Ast\Node;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\TemplateTagValueNode;
 use PHPStan\PhpDocParser\Ast\Type\FullyQualifiedNameNode;
 use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use PHPStan\Reflection\ReflectionProvider;
 use PHPStan\Type\Type;
 use Rector\Application\Provider\CurrentFileProvider;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\SpacelessPhpDocTagNode;
 use Rector\BetterPhpDocParser\ValueObject\PhpDocAttributeKey;
 use Rector\CodingStyle\ClassNameImport\ClassNameImportSkipper;
 use Rector\Exception\ShouldNotHappenException;
@@ -51,12 +52,16 @@ final class NameImportingPhpDocNodeVisitor extends AbstractNodeVisitor
 
     public function enterNode(Node $node): ?Node
     {
-        if ($node instanceof SpacelessPhpDocTagNode) {
-            return $this->enterSpacelessPhpDocTagNode($node);
+        if ($node instanceof PhpDocTagNode && $node->value instanceof DoctrineTagValueNode) {
+            return $this->enterDoctrineTagNode($node, $node->value->annotation);
         }
 
-        if ($node instanceof DoctrineAnnotationTagValueNode) {
-            $this->processDoctrineAnnotationTagValueNode($node);
+        // nested annotation, e.g. @ORM\JoinColumn in @ORM\JoinTable(joinColumns={@ORM\JoinColumn})
+        if ($node instanceof DoctrineAnnotation) {
+            if (! $node->getAttribute(PhpDocAttributeKey::PARENT) instanceof DoctrineTagValueNode) {
+                $this->processNestedDoctrineAnnotation($node);
+            }
+
             return $node;
         }
 
@@ -211,15 +216,14 @@ final class NameImportingPhpDocNodeVisitor extends AbstractNodeVisitor
         return count($namespaceParts) > 1;
     }
 
-    private function processDoctrineAnnotationTagValueNode(
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode
-    ): void {
+    private function processNestedDoctrineAnnotation(DoctrineAnnotation $doctrineAnnotation): void
+    {
         $currentPhpParserNode = $this->currentPhpParserNode;
         if (! $currentPhpParserNode instanceof PhpParserNode) {
             throw new ShouldNotHappenException();
         }
 
-        $identifierTypeNode = $doctrineAnnotationTagValueNode->identifierTypeNode;
+        $identifierTypeNode = new IdentifierTypeNode($doctrineAnnotation->name);
         $staticType = $this->identifierPhpDocTypeMapper->mapIdentifierTypeNode(
             $identifierTypeNode,
             $currentPhpParserNode
@@ -235,34 +239,30 @@ final class NameImportingPhpDocNodeVisitor extends AbstractNodeVisitor
             return;
         }
 
-        $shortentedIdentifierTypeNode = $this->processFqnNameImport(
+        $shortenedIdentifierTypeNode = $this->processFqnNameImport(
             $currentPhpParserNode,
             $identifierTypeNode,
             $staticType,
             $file
         );
 
-        if (! $shortentedIdentifierTypeNode instanceof IdentifierTypeNode) {
+        if (! $shortenedIdentifierTypeNode instanceof IdentifierTypeNode) {
             return;
         }
 
-        $doctrineAnnotationTagValueNode->identifierTypeNode = $shortentedIdentifierTypeNode;
-        $doctrineAnnotationTagValueNode->markAsChanged();
+        $doctrineAnnotation->name = '@' . $shortenedIdentifierTypeNode->name;
     }
 
-    private function enterSpacelessPhpDocTagNode(
-        SpacelessPhpDocTagNode $spacelessPhpDocTagNode
-    ): SpacelessPhpDocTagNode|null {
-        if (! $spacelessPhpDocTagNode->value instanceof DoctrineAnnotationTagValueNode) {
-            return null;
-        }
-
+    private function enterDoctrineTagNode(
+        PhpDocTagNode $phpDocTagNode,
+        DoctrineAnnotation $doctrineAnnotation
+    ): ?PhpDocTagNode {
         // special case for doctrine annotation
-        if (! str_starts_with($spacelessPhpDocTagNode->name, '@')) {
+        if (! str_starts_with($phpDocTagNode->name, '@')) {
             return null;
         }
 
-        $attributeClass = ltrim($spacelessPhpDocTagNode->name, '@\\');
+        $attributeClass = ltrim($phpDocTagNode->name, '@\\');
         $identifierTypeNode = new IdentifierTypeNode($attributeClass);
 
         $currentPhpParserNode = $this->currentPhpParserNode;
@@ -292,11 +292,14 @@ final class NameImportingPhpDocNodeVisitor extends AbstractNodeVisitor
             $file
         );
 
-        if ($importedName instanceof IdentifierTypeNode) {
-            $spacelessPhpDocTagNode->name = '@' . $importedName->name;
-            return $spacelessPhpDocTagNode;
+        if (! $importedName instanceof IdentifierTypeNode) {
+            return null;
         }
 
-        return null;
+        // the printer prints the tag name, and the annotation name when it prints the tag again
+        $phpDocTagNode->name = '@' . $importedName->name;
+        $doctrineAnnotation->name = $phpDocTagNode->name;
+
+        return $phpDocTagNode;
     }
 }

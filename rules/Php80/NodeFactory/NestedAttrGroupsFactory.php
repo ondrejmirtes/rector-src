@@ -26,7 +26,7 @@ final readonly class NestedAttrGroupsFactory
         $attributeGroups = [];
 
         foreach ($nestedDoctrineTagAndAnnotationToAttributes as $nestedDoctrineTagAndAnnotationToAttribute) {
-            $doctrineAnnotationTagValueNode = $nestedDoctrineTagAndAnnotationToAttribute->getDoctrineAnnotationTagValueNode();
+            $doctrineAnnotation = $nestedDoctrineTagAndAnnotationToAttribute->getDoctrineAnnotation();
 
             $nestedAnnotationToAttribute = $nestedDoctrineTagAndAnnotationToAttribute->getNestedAnnotationToAttribute();
 
@@ -34,14 +34,14 @@ final readonly class NestedAttrGroupsFactory
             if (! $nestedAnnotationToAttribute->shouldRemoveOriginal()) {
                 // add attributes
                 $attributeGroups[] = $this->phpNestedAttributeGroupFactory->create(
-                    $doctrineAnnotationTagValueNode,
+                    $doctrineAnnotation,
                     $nestedDoctrineTagAndAnnotationToAttribute->getNestedAnnotationToAttribute(),
                     $uses
                 );
             }
 
             $nestedAttributeGroups = $this->phpNestedAttributeGroupFactory->createNested(
-                $doctrineAnnotationTagValueNode,
+                $doctrineAnnotation,
                 $nestedDoctrineTagAndAnnotationToAttribute->getNestedAnnotationToAttribute(),
             );
 

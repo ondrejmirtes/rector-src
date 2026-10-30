@@ -6,11 +6,8 @@ namespace Rector\PhpAttribute;
 
 use PhpParser\BuilderHelpers;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar\String_;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\StringNode;
-use Rector\NodeTypeResolver\Node\AttributeKey;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use Rector\PhpAttribute\Contract\AnnotationToAttributeMapperInterface;
 use Rector\PhpAttribute\Enum\DocTagNodeState;
 use Webmozart\Assert\Assert;
@@ -31,6 +28,16 @@ final readonly class AnnotationToAttributeMapper
 
     public function map(mixed $value): mixed
     {
+        // a constant or a bare word, e.g. true in @Column(nullable=true)
+        if ($value instanceof IdentifierTypeNode) {
+            $value = match (strtolower($value->name)) {
+                'true' => true,
+                'false' => false,
+                'null' => null,
+                default => $value->name,
+            };
+        }
+
         foreach ($this->annotationToAttributeMappers as $annotationToAttributeMapper) {
             if ($annotationToAttributeMapper->isCandidate($value)) {
                 return $annotationToAttributeMapper->map($value);
@@ -42,18 +49,8 @@ final readonly class AnnotationToAttributeMapper
         }
 
         // remove node, as handled elsewhere
-        if ($value instanceof DoctrineAnnotationTagValueNode) {
+        if ($value instanceof DoctrineAnnotation) {
             return DocTagNodeState::REMOVE_ARRAY;
-        }
-
-        if ($value instanceof ArrayItemNode) {
-            return BuilderHelpers::normalizeValue((string) $value);
-        }
-
-        if ($value instanceof StringNode) {
-            return new String_($value->value, [
-                AttributeKey::KIND => $value->getAttribute(AttributeKey::KIND),
-            ]);
         }
 
         // fallback

@@ -38,9 +38,9 @@ use Rector\NodeTypeResolver\NodeTypeResolver;
 use Rector\NodeTypeResolver\Reflection\BetterReflection\SourceLocatorProvider\DynamicSourceLocatorProvider;
 use Rector\PhpAttribute\AnnotationToAttributeMapper;
 use Rector\PhpAttribute\AnnotationToAttributeMapper\ArrayAnnotationToAttributeMapper;
-use Rector\PhpAttribute\AnnotationToAttributeMapper\ArrayItemNodeAnnotationToAttributeMapper;
-use Rector\PhpAttribute\AnnotationToAttributeMapper\CurlyListNodeAnnotationToAttributeMapper;
 use Rector\PhpAttribute\AnnotationToAttributeMapper\DoctrineAnnotationAnnotationToAttributeMapper;
+use Rector\PhpAttribute\AnnotationToAttributeMapper\DoctrineArgumentAnnotationToAttributeMapper;
+use Rector\PhpAttribute\AnnotationToAttributeMapper\DoctrineArrayAnnotationToAttributeMapper;
 use Rector\PhpDocParser\NodeTraverser\SimpleCallableNodeTraverser;
 use Rector\PhpParser\Comparing\NodeComparator;
 use Rector\PhpParser\Node\NodeFactory;
@@ -219,22 +219,22 @@ final class LazyContainerFactory
         );
 
         $rectorConfig->afterResolving(
-            ArrayItemNodeAnnotationToAttributeMapper::class,
+            DoctrineArgumentAnnotationToAttributeMapper::class,
             static function (
-                ArrayItemNodeAnnotationToAttributeMapper $arrayItemNodeAnnotationToAttributeMapper
+                DoctrineArgumentAnnotationToAttributeMapper $doctrineArgumentAnnotationToAttributeMapper
             ) use ($rectorConfig): void {
                 $annotationToAttributeMapper = $rectorConfig->make(AnnotationToAttributeMapper::class);
-                $arrayItemNodeAnnotationToAttributeMapper->autowire($annotationToAttributeMapper);
+                $doctrineArgumentAnnotationToAttributeMapper->autowire($annotationToAttributeMapper);
             }
         );
 
         $rectorConfig->afterResolving(
-            CurlyListNodeAnnotationToAttributeMapper::class,
+            DoctrineArrayAnnotationToAttributeMapper::class,
             static function (
-                CurlyListNodeAnnotationToAttributeMapper $curlyListNodeAnnotationToAttributeMapper
+                DoctrineArrayAnnotationToAttributeMapper $doctrineArrayAnnotationToAttributeMapper
             ) use ($rectorConfig): void {
                 $annotationToAttributeMapper = $rectorConfig->make(AnnotationToAttributeMapper::class);
-                $curlyListNodeAnnotationToAttributeMapper->autowire($annotationToAttributeMapper);
+                $doctrineArrayAnnotationToAttributeMapper->autowire($annotationToAttributeMapper);
             }
         );
 

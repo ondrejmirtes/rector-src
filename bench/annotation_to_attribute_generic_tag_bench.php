@@ -10,7 +10,7 @@ declare(strict_types=1);
  * per-tag linear scan.
  *
  * This bench drives refactor() over many class methods whose docblock holds a single generic tag
- * that is NOT in the config (the common case). A bare generic tag is not a DoctrineAnnotationTagValueNode,
+ * that is NOT in the config (the common case). A bare generic tag is not a DoctrineTagValueNode,
  * so the processDoctrineAnnotationClasses()/matchAnnotationToAttribute() path is skipped and only the
  * processGenericTags() scan is exercised.
  *

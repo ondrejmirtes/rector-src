@@ -14,8 +14,11 @@ use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Use_;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineArgument;
+use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
+use Rector\BetterPhpDocParser\ValueObject\DoctrineAnnotation\SilentKeyMap;
+use Rector\BetterPhpDocParser\ValueObject\PhpDocAttributeKey;
 use Rector\NodeTypeResolver\Node\AttributeKey;
 use Rector\Php80\ValueObject\AnnotationToAttribute;
 use Rector\Php81\Enum\AttributeName;
@@ -75,11 +78,11 @@ final readonly class PhpAttributeGroupFactory
      * @param Use_[] $uses
      */
     public function create(
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode,
+        DoctrineAnnotation $doctrineAnnotation,
         AnnotationToAttribute $annotationToAttribute,
         array $uses
     ): AttributeGroup {
-        $values = $doctrineAnnotationTagValueNode->getValuesWithSilentKey();
+        $values = $this->resolveArgumentsWithSilentKey($doctrineAnnotation);
         $args = $this->createArgsFromItems($values, '', $annotationToAttribute->getClassReferenceFields());
 
         $this->annotationToAttributeIntegerValueCaster->castAttributeTypes($annotationToAttribute, $args);
@@ -88,7 +91,7 @@ final readonly class PhpAttributeGroupFactory
 
         $attributeName = $this->attributeNameFactory->create(
             $annotationToAttribute,
-            $doctrineAnnotationTagValueNode,
+            $doctrineAnnotation,
             $uses
         );
 
@@ -100,7 +103,7 @@ final readonly class PhpAttributeGroupFactory
     }
 
     /**
-     * @param ArrayItemNode[]|mixed[] $items
+     * @param DoctrineArgument[]|mixed[] $items
      * @param string $attributeClass @deprecated
      * @param string[] $classReferencedFields
      *
@@ -119,6 +122,30 @@ final readonly class PhpAttributeGroupFactory
 
         // the key here should contain the named argument
         return $this->namedArgsFactory->createFromValues($values);
+    }
+
+    /**
+     * The first argument without a key gets the name of the attribute parameter, e.g. "path" for @Route("/home")
+     *
+     * @return DoctrineArgument[]
+     */
+    private function resolveArgumentsWithSilentKey(DoctrineAnnotation $doctrineAnnotation): array
+    {
+        $resolvedClass = $doctrineAnnotation->getAttribute(PhpDocAttributeKey::RESOLVED_CLASS);
+        $silentKey = SilentKeyMap::CLASS_NAMES_TO_SILENT_KEYS[$resolvedClass] ?? null;
+        if ($silentKey === null) {
+            return $doctrineAnnotation->arguments;
+        }
+
+        $doctrineArguments = $doctrineAnnotation->arguments;
+        foreach ($doctrineArguments as $key => $doctrineArgument) {
+            if ($doctrineArgument->key === null) {
+                $doctrineArguments[$key] = new DoctrineArgument(new IdentifierTypeNode($silentKey), $doctrineArgument->value);
+                break;
+            }
+        }
+
+        return $doctrineArguments;
     }
 
     /**

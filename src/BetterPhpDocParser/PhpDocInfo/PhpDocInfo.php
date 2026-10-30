@@ -8,6 +8,8 @@ use Nette\Utils\Strings;
 use PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
 use PHPStan\PhpDocParser\Ast\Node;
 use PHPStan\PhpDocParser\Ast\NodeTraverser;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\ExtendsTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\GenericTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\ImplementsTagValueNode;
@@ -21,16 +23,12 @@ use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PropertyTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
 use PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
-use PHPStan\PhpDocParser\Ast\Type\ConstTypeNode;
 use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use PHPStan\PhpDocParser\Lexer\Lexer;
 use PHPStan\PhpDocParser\Parser\TokenIterator;
 use PHPStan\Type\MixedType;
 use PHPStan\Type\Type;
 use Rector\BetterPhpDocParser\Annotation\AnnotationNaming;
-use Rector\BetterPhpDocParser\PhpDoc\ArrayItemNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
-use Rector\BetterPhpDocParser\PhpDoc\SpacelessPhpDocTagNode;
 use Rector\BetterPhpDocParser\PhpDocNodeFinder\PhpDocNodeByTypeFinder;
 use Rector\BetterPhpDocParser\ValueObject\PhpDocAttributeKey;
 use Rector\Exception\ShouldNotHappenException;
@@ -192,7 +190,7 @@ final class PhpDocInfo
     /**
      * @param string[] $classes
      */
-    public function getByAnnotationClasses(array $classes): ?DoctrineAnnotationTagValueNode
+    public function getByAnnotationClasses(array $classes): ?DoctrineAnnotation
     {
         $doctrineAnnotationTagValueNodes = $this->phpDocNodeByTypeFinder->findDoctrineAnnotationsByClasses(
             $this->phpDocNode,
@@ -205,7 +203,7 @@ final class PhpDocInfo
     /**
      * @api doctrine/symfony
      */
-    public function getByAnnotationClass(string $class): ?DoctrineAnnotationTagValueNode
+    public function getByAnnotationClass(string $class): ?DoctrineAnnotation
     {
         $doctrineAnnotationTagValueNodes = $this->phpDocNodeByTypeFinder->findDoctrineAnnotationsByClass(
             $this->phpDocNode,
@@ -224,10 +222,10 @@ final class PhpDocInfo
      */
     public function hasByAnnotationClasses(array $annotationsClasses): bool
     {
-        return $this->getByAnnotationClasses($annotationsClasses) instanceof DoctrineAnnotationTagValueNode;
+        return $this->getByAnnotationClasses($annotationsClasses) instanceof DoctrineAnnotation;
     }
 
-    public function findOneByAnnotationClass(string $desiredClass): ?DoctrineAnnotationTagValueNode
+    public function findOneByAnnotationClass(string $desiredClass): ?DoctrineAnnotation
     {
         $foundTagValueNodes = $this->findByAnnotationClass($desiredClass);
         return $foundTagValueNodes[0] ?? null;
@@ -306,10 +304,8 @@ final class PhpDocInfo
 
     public function addTagValueNode(PhpDocTagValueNode $phpDocTagValueNode): void
     {
-        if ($phpDocTagValueNode instanceof DoctrineAnnotationTagValueNode) {
-            $name = '@\\' . $phpDocTagValueNode->identifierTypeNode;
-            $spacelessPhpDocTagNode = new SpacelessPhpDocTagNode($name, $phpDocTagValueNode);
-            $this->addPhpDocTagNode($spacelessPhpDocTagNode);
+        if ($phpDocTagValueNode instanceof DoctrineTagValueNode) {
+            $this->addPhpDocTagNode(new PhpDocTagNode($phpDocTagValueNode->annotation->name, $phpDocTagValueNode));
             return;
         }
 
@@ -414,10 +410,13 @@ final class PhpDocInfo
         /** @var IdentifierTypeNode[] $identifierTypeNodes */
         $identifierTypeNodes = $this->phpDocNodeByTypeFinder->findByType($this->phpDocNode, IdentifierTypeNode::class);
 
+        /** @var DoctrineAnnotation[] $doctrineAnnotations */
+        $doctrineAnnotations = $this->phpDocNodeByTypeFinder->findByType($this->phpDocNode, DoctrineAnnotation::class);
+
         $resolvedClasses = [];
 
-        foreach ($identifierTypeNodes as $identifierTypeNode) {
-            $resolvedClasses[] = ltrim($identifierTypeNode->name, '@');
+        foreach ([...$identifierTypeNodes, ...$doctrineAnnotations] as $namedNode) {
+            $resolvedClasses[] = ltrim($namedNode->name, '@');
         }
 
         return $resolvedClasses;
@@ -507,47 +506,12 @@ final class PhpDocInfo
 
         $phpDocNodeTraverser = new NodeTraverser([new CallablePhpDocNodeVisitor(static function (Node $node) use (
             &$classNames,
-        ): ?ConstTypeNode {
-            if (! $node instanceof ConstTypeNode) {
+        ): ?ConstFetchNode {
+            if (! $node instanceof ConstFetchNode) {
                 return null;
             }
 
-            if (! $node->constExpr instanceof ConstFetchNode) {
-                return null;
-            }
-
-            $classNames[] = $node->constExpr->getAttribute(PhpDocAttributeKey::RESOLVED_CLASS);
-            return $node;
-        })]);
-        $phpDocNodeTraverser->traverse([$this->phpDocNode]);
-
-        return $classNames;
-    }
-
-    /**
-     * @return string[]
-     */
-    public function getArrayItemNodeClassNames(): array
-    {
-        $classNames = [];
-
-        $phpDocNodeTraverser = new NodeTraverser([new CallablePhpDocNodeVisitor(static function (Node $node) use (
-            &$classNames,
-        ): ?ArrayItemNode {
-            if (! $node instanceof ArrayItemNode) {
-                return null;
-            }
-
-            $resolvedClass = $node->getAttribute(PhpDocAttributeKey::RESOLVED_CLASS);
-            if ($resolvedClass !== null) {
-                $classNames[] = $resolvedClass;
-            }
-
-            $resolvedKeyClass = $node->getAttribute(PhpDocAttributeKey::RESOLVED_KEY_CLASS);
-            if ($resolvedKeyClass !== null) {
-                $classNames[] = $resolvedKeyClass;
-            }
-
+            $classNames[] = $node->getAttribute(PhpDocAttributeKey::RESOLVED_CLASS);
             return $node;
         })]);
         $phpDocNodeTraverser->traverse([$this->phpDocNode]);
@@ -557,7 +521,7 @@ final class PhpDocInfo
 
     /**
      * @param class-string $desiredClass
-     * @return DoctrineAnnotationTagValueNode[]
+     * @return DoctrineAnnotation[]
      */
     public function findByAnnotationClass(string $desiredClass): array
     {

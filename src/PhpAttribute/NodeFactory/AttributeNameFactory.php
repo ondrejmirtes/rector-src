@@ -7,7 +7,7 @@ namespace Rector\PhpAttribute\NodeFactory;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Stmt\Use_;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
 use Rector\Php80\Contract\ValueObject\AnnotationToAttributeInterface;
 use Rector\PhpAttribute\UseAliasNameMatcher;
 use Rector\PhpAttribute\ValueObject\UseAliasMetadata;
@@ -24,13 +24,13 @@ final readonly class AttributeNameFactory
      */
     public function create(
         AnnotationToAttributeInterface $annotationToAttribute,
-        DoctrineAnnotationTagValueNode $doctrineAnnotationTagValueNode,
+        DoctrineAnnotation $doctrineAnnotation,
         array $uses
     ): FullyQualified|Name {
         // A. attribute and class name are the same, so we re-use the short form to keep code compatible with previous one,
         // except start with \
         if ($annotationToAttribute->getAttributeClass() === $annotationToAttribute->getTag()) {
-            $attributeName = $doctrineAnnotationTagValueNode->identifierTypeNode->name;
+            $attributeName = $doctrineAnnotation->name;
             $attributeName = ltrim($attributeName, '@');
 
             if (str_starts_with($attributeName, '\\')) {
@@ -43,7 +43,7 @@ final readonly class AttributeNameFactory
         // B. different name
         $useAliasMetadata = $this->useAliasNameMatcher->match(
             $uses,
-            $doctrineAnnotationTagValueNode->identifierTypeNode->name,
+            $doctrineAnnotation->name,
             $annotationToAttribute
         );
         if ($useAliasMetadata instanceof UseAliasMetadata) {

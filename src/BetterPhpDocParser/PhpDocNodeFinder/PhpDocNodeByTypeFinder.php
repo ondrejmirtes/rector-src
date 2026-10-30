@@ -6,8 +6,9 @@ namespace Rector\BetterPhpDocParser\PhpDocNodeFinder;
 
 use PHPStan\PhpDocParser\Ast\Node;
 use PHPStan\PhpDocParser\Ast\NodeTraverser;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineAnnotation;
 use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode;
-use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationTagValueNode;
+use Rector\BetterPhpDocParser\PhpDoc\DoctrineAnnotationArguments;
 use Rector\PhpDocParser\PhpDocParser\PhpDocNodeVisitor\CallablePhpDocNodeVisitor;
 
 final class PhpDocNodeByTypeFinder
@@ -40,36 +41,37 @@ final class PhpDocNodeByTypeFinder
 
     /**
      * @param string[] $classes
-     * @return DoctrineAnnotationTagValueNode[]
+     * @return DoctrineAnnotation[]
      */
     public function findDoctrineAnnotationsByClasses(PhpDocNode $phpDocNode, array $classes): array
     {
-        $doctrineAnnotationTagValueNodes = [];
+        $doctrineAnnotations = [];
 
         foreach ($classes as $class) {
-            $justFoundTagValueNodes = $this->findDoctrineAnnotationsByClass($phpDocNode, $class);
-            $doctrineAnnotationTagValueNodes = [...$doctrineAnnotationTagValueNodes, ...$justFoundTagValueNodes];
+            $doctrineAnnotations = [
+                ...$doctrineAnnotations,
+                ...$this->findDoctrineAnnotationsByClass($phpDocNode, $class),
+            ];
         }
 
-        return $doctrineAnnotationTagValueNodes;
+        return $doctrineAnnotations;
     }
 
     /**
      * @param class-string $desiredClass
-     * @return DoctrineAnnotationTagValueNode[]
+     * @return DoctrineAnnotation[]
      */
     public function findDoctrineAnnotationsByClass(PhpDocNode $phpDocNode, string $desiredClass): array
     {
-        $desiredDoctrineTagValueNodes = [];
+        $desiredDoctrineAnnotations = [];
 
-        /** @var DoctrineAnnotationTagValueNode[] $doctrineTagValueNodes */
-        $doctrineTagValueNodes = $this->findByType($phpDocNode, DoctrineAnnotationTagValueNode::class);
-        foreach ($doctrineTagValueNodes as $doctrineTagValueNode) {
-            if ($doctrineTagValueNode->hasClassName($desiredClass)) {
-                $desiredDoctrineTagValueNodes[] = $doctrineTagValueNode;
+        $doctrineAnnotations = $this->findByType($phpDocNode, DoctrineAnnotation::class);
+        foreach ($doctrineAnnotations as $doctrineAnnotation) {
+            if (DoctrineAnnotationArguments::hasClassName($doctrineAnnotation, $desiredClass)) {
+                $desiredDoctrineAnnotations[] = $doctrineAnnotation;
             }
         }
 
-        return $desiredDoctrineTagValueNodes;
+        return $desiredDoctrineAnnotations;
     }
 }
